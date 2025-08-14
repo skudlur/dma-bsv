@@ -1,0 +1,7 @@
+*.bo
+*.tmp
+*.swp
+*.log
+
+build/
+log/
