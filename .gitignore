@@ -2,6 +2,10 @@
 *.tmp
 *.swp
 *.log
+*.txt
+*.so
+
+dma_test
 
 testbench/DMA.bsv
 build/
