@@ -3,5 +3,6 @@
 *.swp
 *.log
 
+testbench/DMA.bsv
 build/
 log/
