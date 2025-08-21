@@ -20,23 +20,17 @@ module mkMemoryBridge#(
    FIFOF#(MemRsp) rsp_fifo <- mkFIFOF();
    FIFOF#(MemReq) req_fifo <- mkFIFOF();
 
-   Wire#(Bool)    wr_mb_ready <- mkWire();
-
    // --- RULES ---
-   rule read_request(req_fifo.notEmpty);
+   rule read_request(req_fifo.notEmpty && mem_model_client.request.notFull);
       let req = req_fifo.first;
-      if (mem_model_client.request.notFull) begin
-         mem_model_client.request.put(req);
-         req_fifo.deq;
-      end
+      mem_model_client.request.put(req);
+      req_fifo.deq;
    endrule
 
-   rule read_response(mem_model_client.response.notEmpty);
+   rule read_response(mem_model_client.response.notEmpty && rsp_fifo.notFull);
       let resp = mem_model_client.response.first;
-      if (rsp_fifo.notFull) begin
-         rsp_fifo.enq(resp);
-         mem_model_client.response.deq;
-      end
+      rsp_fifo.enq(resp);
+      mem_model_client.response.deq;
    endrule
 
    // --- INTERFACE IMPLEMENTATIONS ---
@@ -51,7 +45,7 @@ module mkMemoryBridge#(
                tid: 0 // TODO: simplify the memory model structs
             };
          req_fifo.enq(req);
-      method
+      endmethod
 
       method Bool r_isValid();
          return rsp_fifo.notEmpty;
@@ -65,5 +59,31 @@ module mkMemoryBridge#(
          rsp_fifo.deq;
       endmethod
 
+      method Action aw_put(Bit#(`ADDR_WIDTH) aw_addr);
+      endmethod
+
+      method Bool aw_isReady();
+         return wr_aw_ready;
+      endmethod
+
+      method Action w_put(Bit#(`ADDR_WIDTH) w_data);
+
+      endmethod
+
+      method Bool w_isReady();
+         return wr_w_ready;
+      endmethod
+
+      method Bool b_isValid();
+         return wr_w_valid;
+      endmethod
+
+      method Bit#(2) b_resp();
+         return wr_b_resp;
+      endmethod
+
+      method Action b_setReady();
+         wr_b_ready <= True;
+      endmethod
     endinterface
 endmodule
