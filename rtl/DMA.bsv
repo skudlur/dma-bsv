@@ -124,8 +124,6 @@ module mkDMA (DMA_Ifc);
 
    interface DMAMemory_Ifc mem_ifc;
       method Action ar_put(Bit#(`ADDR_WIDTH) ar_addr);
-         wr_ar_valid <= True;
-         wr_ar_addr  <= ar_addr;
       endmethod
 
       method Bool ar_isReady();

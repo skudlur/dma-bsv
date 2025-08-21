@@ -10,6 +10,7 @@ RM = rm -rf
 # --- Project Structure ---
 RTL_DIR = rtl
 TESTBENCH_DIR = testbench
+UTILS_DIR = utils
 
 # Top-level module and file for simulation
 TOP_MODULE = mkTestDMA
@@ -53,6 +54,7 @@ test: $(TEST_EXE)
 $(TEST_EXE): $(RTL_DIR)/DMA.bsv $(TESTBENCH_DIR)/$(TOP_FILE) | $(BUILD_DIR) $(C_FILES_DIR)
 	@echo "--- Creating symbolic link for compilation ---"
 	cd $(TESTBENCH_DIR) && ln -sf ../$(RTL_DIR)/DMA.bsv DMA.bsv
+	cd $(TESTBENCH_DIR) && cp -r ../$(UTILS_DIR)/* ./
 
 	@echo "--- Compiling Bluespec Code ---"
 	cd $(TESTBENCH_DIR) && $(BSC) $(BSC_SIM_FLAGS) -bdir ../$(BUILD_DIR) -simdir ../$(C_FILES_DIR) $(TOP_FILE)
