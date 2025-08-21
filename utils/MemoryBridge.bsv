@@ -8,18 +8,12 @@ typedef Rsp_T  MemRsp;
 
 `define ADDR_WIDTH 32
 
-interface MemoryBridge_IFC;
-   method    Bool          mb_setReady();
-   interface DMAMemory_Ifc dma_side_ifc;
-endinterface
-
-interface
 
 module mkMemoryBridge#(
     Client#(MemReq, MemRsp) mem_model_client
 )
 (
-    MemoryBridge_IFC
+    DMAMemory_Ifc
 );
    // --- INTERNAL STATE ---
    // The internal FIFOs for buffering requests and responses from the memory model
@@ -31,13 +25,18 @@ module mkMemoryBridge#(
    // --- RULES ---
    rule read_request(req_fifo.notEmpty);
       let req = req_fifo.first;
-      mem_model_client.request.put(req);
-      req_fifo.deq;
+      if (mem_model_client.request.notFull) begin
+         mem_model_client.request.put(req);
+         req_fifo.deq;
+      end
    endrule
 
-   rule read_response(mem_model_client.response);
-      let resp = mem_model_client.response.get();
-      rsp_fifo.enq(resp);
+   rule read_response(mem_model_client.response.notEmpty);
+      let resp = mem_model_client.response.first;
+      if (rsp_fifo.notFull) begin
+         rsp_fifo.enq(resp);
+         mem_model_client.response.deq;
+      end
    endrule
 
    // --- INTERFACE IMPLEMENTATIONS ---
@@ -45,7 +44,7 @@ module mkMemoryBridge#(
 
       method Action ar_put(Bit#(`ADDR_WIDTH) ar_addr);
          let req = Req {
-               command: "READ",
+               command: READ,
                addr: ar_addr,
                data: ?,
                b_size: BITS32,
