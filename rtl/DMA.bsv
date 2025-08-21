@@ -29,7 +29,7 @@ interface DMAMemory_Ifc;
 
    // Methods for Data Read Channel
    method Bool      r_isValid();               // DMA reads the R_VALID signal from memory
-   method Bit#(32)  r_data();                  // DMA reads the R_DATA bus from memory
+   method Bit#(`DATA_WIDTH) r_data();                  // DMA reads the R_DATA bus from memory
    method Action    r_setReady();              // Drives the R_READY signal to memory
 
    // Methods for Address Write Channel
