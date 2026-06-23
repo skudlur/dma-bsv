@@ -17,24 +17,37 @@ module mkTestDMA();
    // Instantiate bridge
    let bridge <- mkMemoryBridge(dma.mem_ifc, mem.bus_ifc[0]);
 
-   Reg#(Bool) started <- mkReg(False);
    Reg#(Bit#(32)) count <- mkReg(0);
 
-   rule init_and_start (!started);
-      // Initialize memory: base=0, size=1024 bytes, not from file
-      mem.initialize(0, 1024, False);
-      dma.startRead(32'h0, 4); // read 4 words
-      started <= True;
-      $display("Testbench: Memory initialized. Kicking off DMA read.");
-   endrule
+   // A simple FSM to test DMA Read and Write
+   mkAutoFSM(
+      seq
+         // Initialize memory: base=0, size=1024 bytes, not from file
+         action
+            mem.initialize(0, 1024, False);
+            $display("Testbench: Memory initialized. Kicking off DMA WRITE.");
+            // Write 4 words starting at address 0x100
+            dma.startWrite(32'h100, 4);
+         endaction
+         action dma.putWriteData(32'hDEADBEEF); endaction
+         action dma.putWriteData(32'hCAFEBABE); endaction
+         action dma.putWriteData(32'h12345678); endaction
+         action dma.putWriteData(32'h87654321); endaction
 
-   rule finish_test (started);
-      count <= count + 1;
-      // Provide a timeout for the test to ensure it finishes
-      if (count > 50) begin
-         $display("Testbench: Simulation finished.");
-         $finish(0);
-      end
-   endrule
+         delay(20);
+
+         action
+            $display("Testbench: Kicking off DMA READ to verify writes.");
+            dma.startRead(32'h100, 4);
+         endaction
+
+         delay(100);
+
+         action
+            $display("Testbench: Simulation finished successfully.");
+            $finish(0);
+         endaction
+      endseq
+   );
 
 endmodule // mkTestDMA
