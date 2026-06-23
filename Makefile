@@ -63,7 +63,7 @@ $(TEST_EXE): $(RTL_DIR)/DMA.bsv $(TESTBENCH_DIR)/$(TOP_FILE) | $(BUILD_DIR) $(C_
 	cd $(TESTBENCH_DIR) && rm -f DMA.bsv
 
 	@echo "--- Linking Executable ---"
-	$(BSC) $(BSC_LINK_FLAGS) -bdir $(BUILD_DIR) -simdir $(C_FILES_DIR)
+	$(BSC) $(BSC_LINK_FLAGS) -bdir $(BUILD_DIR) -simdir $(C_FILES_DIR) $(TESTBENCH_DIR)/C_imports.c
 
 # =============================================================================
 # Directory Creation
