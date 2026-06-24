@@ -3,7 +3,6 @@ package DMA;
 import FIFOF::*;
 
 `define ADDR_WIDTH 32
-`define DATA_WIDTH 32
 
 typedef enum {
    READ,
@@ -16,7 +15,7 @@ typedef struct {
    Bit#(8)  len; // number of beats
 } DMA_Command deriving (Bits, FShow);
 
-interface DMAMemory_Master_Ifc;
+interface DMAMemory_Master_Ifc#(numeric type data_width);
    // AR
    method Bit#(`ADDR_WIDTH) ar_addr();
    method Bit#(8)           ar_len();
@@ -24,7 +23,7 @@ interface DMAMemory_Master_Ifc;
    method Action            ar_ready(Bool rdy);
 
    // R
-   method Action r_put(Bit#(`DATA_WIDTH) r_data, Bool r_last, Bool r_valid);
+   method Action r_put(Bit#(data_width) r_data, Bool r_last, Bool r_valid);
    method Bool   r_ready();
 
    // AW
@@ -34,7 +33,7 @@ interface DMAMemory_Master_Ifc;
    method Action            aw_ready(Bool rdy);
 
    // W
-   method Bit#(`DATA_WIDTH) w_data();
+   method Bit#(data_width) w_data();
    method Bool              w_last();
    method Bool              w_valid();
    method Action            w_ready(Bool rdy);
@@ -44,14 +43,16 @@ interface DMAMemory_Master_Ifc;
    method Bool   b_ready();
 endinterface
 
-interface DMA_Ifc;
-   interface DMAMemory_Master_Ifc mem_ifc;
+interface DMA_Ifc#(numeric type mem_width, numeric type stream_width);
+   interface DMAMemory_Master_Ifc#(mem_width) mem_ifc;
    method Action startRead(Bit#(`ADDR_WIDTH) addr, Bit#(8) len);
    method Action startWrite(Bit#(`ADDR_WIDTH) addr, Bit#(8) len);
-   method Action putWriteData(Bit#(`DATA_WIDTH) data);
+   method Action putWriteData(Bit#(stream_width) data);
+   method ActionValue#(Bit#(stream_width)) getReadData();
+   method ActionValue#(Bool) getWriteResp();
 endinterface
 
-module mkDMA (DMA_Ifc);
+module mkDMA (DMA_Ifc#(data_width, data_width));
    Reg#(Bit#(8))  rg_r_len  <- mkReg(0);
    Reg#(Bit#(8))  rg_w_len  <- mkReg(0);
    Reg#(Bit#(8))  rg_b_len  <- mkReg(0);
@@ -62,12 +63,13 @@ module mkDMA (DMA_Ifc);
    Reg#(Bit#(32)) rg_addr <- mkReg(0);
    Reg#(Bit#(8))  rg_len  <- mkReg(0);
    
-   FIFOF#(Bit#(32))    data_fifo       <- mkFIFOF();
-   FIFOF#(Bit#(32))    write_data_fifo <- mkSizedFIFOF(16);
+   FIFOF#(Bit#(data_width))    data_fifo       <- mkFIFOF();
+   FIFOF#(Bit#(data_width))    write_data_fifo <- mkSizedFIFOF(16);
    FIFOF#(DMA_Command) cmd_fifo        <- mkFIFOF();
+   FIFOF#(Bool)        b_resp_fifo     <- mkFIFOF();
 
    Wire#(Bool)         wr_ar_ready <- mkDWire(False);
-   Wire#(Bit#(32))     wr_r_data   <- mkDWire(0);
+   Wire#(Bit#(data_width))     wr_r_data   <- mkDWire(0);
    Wire#(Bool)         wr_r_last   <- mkDWire(False);
    Wire#(Bool)         wr_r_valid  <- mkDWire(False);
    
@@ -105,11 +107,7 @@ module mkDMA (DMA_Ifc);
       end
    endrule
 
-   rule rl_dump_read_data;
-      let d = data_fifo.first;
-      data_fifo.deq;
-      $display("DMA Received Data: %x", d);
-   endrule
+   // rl_dump_read_data removed, replaced by getReadData method
 
    // ----- WRITE CHANNELS -----
    rule rl_send_aw (rg_aw_pending);
@@ -128,7 +126,7 @@ module mkDMA (DMA_Ifc);
 
    rule rl_wait_b (rg_b_len > 0);
       if (wr_b_valid) begin
-         $display("DMA: B valid received!");
+         b_resp_fifo.enq(True);
          rg_b_len <= rg_b_len - 1;
       end
    endrule
@@ -142,8 +140,20 @@ module mkDMA (DMA_Ifc);
       cmd_fifo.enq(DMA_Command {cmd: WRITE, addr: addr, len: len});
    endmethod
 
-   method Action putWriteData(Bit#(`DATA_WIDTH) data);
+   method Action putWriteData(Bit#(data_width) data);
       write_data_fifo.enq(data);
+   endmethod
+
+   method ActionValue#(Bit#(data_width)) getReadData();
+      let d = data_fifo.first;
+      data_fifo.deq;
+      return d;
+   endmethod
+
+   method ActionValue#(Bool) getWriteResp();
+      let b = b_resp_fifo.first;
+      b_resp_fifo.deq;
+      return b;
    endmethod
 
    interface DMAMemory_Master_Ifc mem_ifc;
@@ -154,7 +164,7 @@ module mkDMA (DMA_Ifc);
       method Action ar_ready(Bool rdy); wr_ar_ready <= rdy; endmethod
 
       // R Channel
-      method Action r_put(Bit#(`DATA_WIDTH) r_data, Bool r_last, Bool r_valid);
+      method Action r_put(Bit#(data_width) r_data, Bool r_last, Bool r_valid);
          wr_r_data <= r_data;
          wr_r_last <= r_last;
          wr_r_valid <= r_valid;
@@ -168,7 +178,7 @@ module mkDMA (DMA_Ifc);
       method Action aw_ready(Bool rdy); wr_aw_ready <= rdy; endmethod
 
       // W Channel
-      method Bit#(`DATA_WIDTH) w_data(); return write_data_fifo.first; endmethod
+      method Bit#(data_width) w_data(); return write_data_fifo.first; endmethod
       method Bool w_last(); return rg_w_len == 1; endmethod
       method Bool w_valid(); return (rg_w_len > 0) && write_data_fifo.notEmpty; endmethod
       method Action w_ready(Bool rdy); wr_w_ready <= rdy; endmethod

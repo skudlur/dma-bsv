@@ -3,6 +3,7 @@ import Memory_Model::*;
 import MemoryBridge::*;
 import ClientServer::*;
 import StmtFSM::*;
+import DMA_WidthAdapter::*;
 
 typedef 64 ADDR_WIDTH;
 typedef 64 DATA_WIDTH;
@@ -12,36 +13,60 @@ module mkTestDMA();
    Memory_IFC mem <- mkMemory_Model();
 
    // Instantiate DMA
-   DMA_Ifc dma <- mkDMA();
+   DMA_Ifc#(64, 32) dma <- mkDMA_32_to_64();
 
    // Instantiate bridge
    let bridge <- mkMemoryBridge(dma.mem_ifc, mem.bus_ifc[0]);
 
-   Reg#(Bit#(32)) count <- mkReg(0);
+   Reg#(Bit#(32)) cycle_count <- mkReg(0);
+   rule count_cycles;
+      cycle_count <= cycle_count + 1;
+   endrule
 
-   // A simple FSM to test DMA Read and Write
+   Reg#(Bit#(32)) words_to_write <- mkReg(0);
+   rule push_write_data (words_to_write > 0);
+      dma.putWriteData(extend(words_to_write));
+      words_to_write <= words_to_write - 1;
+   endrule
+
+   Reg#(Bit#(32)) words_to_read <- mkReg(0);
+   Reg#(Bit#(32)) read_start_cycle <- mkReg(0);
+
+   rule pop_read_data (words_to_read > 0);
+      let d <- dma.getReadData();
+      if (words_to_read == 1) begin
+         $display("Read Throughput: 254 words in %0d cycles", cycle_count - read_start_cycle);
+      end
+      words_to_read <= words_to_read - 1;
+   endrule
+
+   Reg#(Bit#(32)) write_start_cycle <- mkReg(0);
+
    mkAutoFSM(
       seq
-         // Initialize memory: base=0, size=1024 bytes, not from file
          action
-            mem.initialize(0, 1024, False);
+            mem.initialize(0, 4096, False);
             $display("Testbench: Memory initialized. Kicking off DMA WRITE.");
-            // Write 4 words starting at address 0x100
-            dma.startWrite(32'h100, 4);
+            write_start_cycle <= cycle_count;
+            words_to_write <= 254;
+            dma.startWrite(32'h100, 255); // 255 >> 1 = 127. 127 beats of 64-bit = 254 words
          endaction
-         action dma.putWriteData(32'hDEADBEEF); endaction
-         action dma.putWriteData(32'hCAFEBABE); endaction
-         action dma.putWriteData(32'h12345678); endaction
-         action dma.putWriteData(32'h87654321); endaction
+
+         action
+            let b <- dma.getWriteResp();
+            $display("Write Throughput: 254 words in %0d cycles", cycle_count - write_start_cycle);
+         endaction
 
          delay(20);
 
          action
             $display("Testbench: Kicking off DMA READ to verify writes.");
-            dma.startRead(32'h100, 4);
+            read_start_cycle <= cycle_count;
+            words_to_read <= 254;
+            dma.startRead(32'h100, 255);
          endaction
 
-         delay(100);
+         await(words_to_read == 0);
 
          action
             $display("Testbench: Simulation finished successfully.");

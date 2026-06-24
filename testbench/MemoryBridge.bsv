@@ -11,7 +11,7 @@ typedef Req_T  MemReq;
 typedef Rsp_T  MemRsp;
 
 module mkMemoryBridge#(
-    DMAMemory_Master_Ifc dma,
+    DMAMemory_Master_Ifc#(64) dma,
     Server#(MemReq, MemRsp) mem
 ) (Empty);
 
@@ -62,11 +62,11 @@ module mkMemoryBridge#(
          command: READ,
          addr: extend(rg_br_addr),
          data: 0,
-         b_size: BITS32,
+         b_size: BITS64,
          tid: 0
       };
       req_fifo.enq(req);
-      rg_br_addr <= rg_br_addr + 4;
+      rg_br_addr <= rg_br_addr + 8;
       rg_br_len  <= rg_br_len - 1;
    endrule
 
@@ -89,12 +89,12 @@ module mkMemoryBridge#(
          MemReq req = Req {
             command: WRITE,
             addr: extend(rg_bw_addr),
-            data: extend(dma.w_data()),
-            b_size: BITS32,
+            data: extend(dma.w_data()), // w_data is already 64-bit, but extend is safe
+            b_size: BITS64,
             tid: 0
          };
          req_fifo.enq(req);
-         rg_bw_addr <= rg_bw_addr + 4;
+         rg_bw_addr <= rg_bw_addr + 8;
          rg_bw_len  <= rg_bw_len - 1;
       end
    endrule
@@ -132,7 +132,7 @@ module mkMemoryBridge#(
       end
 
       let r_last = (count == 1);
-      dma.r_put(truncate(data), r_last, True);
+      dma.r_put(data, r_last, True);
 
       if (dma.r_ready()) begin
          rsp_fifo.deq;
