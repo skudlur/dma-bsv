@@ -1,8 +1,17 @@
+/*
+ * DMA_WidthAdapter.bsv
+ * 
+ * Instantiates the core DMA engine and bridges it with Gearboxes 
+ * to adapt a narrower internal stream (e.g., 32-bit) to a wider
+ * memory interface (e.g., 64-bit). It also scales the burst lengths.
+ */
 package DMA_WidthAdapter;
 
 import DMA::*;
 import Gearbox::*;
 
+// mkDMA_32_to_64
+// Adapts a 32-bit streaming interface to a 64-bit AXI memory interface.
 module mkDMA_32_to_64 (DMA_Ifc#(64, 32));
    
    DMA_Ifc#(64, 64) core <- mkDMA();

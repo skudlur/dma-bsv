@@ -1,3 +1,9 @@
+/*
+ * Req_Rsp.bsv
+ * 
+ * Defines the standard types used for Requests and Responses
+ * within the testbench memory bridge interfaces.
+ */
 package Req_Rsp;
 
 // ================================================================

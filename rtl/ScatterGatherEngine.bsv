@@ -1,3 +1,10 @@
+/*
+ * ScatterGatherEngine.bsv
+ * 
+ * Hardware linked-list descriptor processor.
+ * Fetches 4-word descriptors from memory and executes the specified DMA
+ * transfers (Read or Write) autonomously until reaching a null pointer.
+ */
 package ScatterGatherEngine;
 
 import FIFOF::*;
@@ -30,6 +37,8 @@ interface SG_DMA_Ifc#(numeric type mem_width, numeric type stream_width);
    interface DMAMemory_Master_Ifc#(mem_width) mem_ifc;
 endinterface
 
+// mkScatterGatherEngine
+// Wraps a raw DMA interface to provide linked-list autonomous capabilities.
 module mkScatterGatherEngine#(DMA_Ifc#(mem_width, stream_width) dma)(SG_DMA_Ifc#(mem_width, stream_width))
    provisos (
       Add#(a__, 32, stream_width)

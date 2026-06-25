@@ -1,3 +1,10 @@
+/*
+ * DMA_ByteAligner.bsv
+ * 
+ * Intercepts unaligned requests (where addr doesn't match the word boundary)
+ * and automatically manages byte-shifting and masked generation of write strobes 
+ * to bridge the unaligned memory addresses seamlessly.
+ */
 package DMA_ByteAligner;
 
 import FIFOF::*;
@@ -14,6 +21,8 @@ interface DMA_ByteAligner_Ifc#(numeric type data_width);
    interface DMAMemory_Master_Ifc#(64) mem_ifc;
 endinterface
 
+// mkDMA_ByteAligner
+// Wraps around the 32-bit DMA interface, managing byte boundaries and offsets.
 module mkDMA_ByteAligner#(DMA_Ifc#(64, 32) core)(DMA_ByteAligner_Ifc#(32));
 
    FIFOF#(Bit#(32)) user_write_fifo <- mkFIFOF();

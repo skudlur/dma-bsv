@@ -1,3 +1,10 @@
+/*
+ * Gearbox.bsv
+ * 
+ * Generic data-width converter utilities.
+ * `mkUpSizer` packs narrow N-bit streams into wider M-bit streams.
+ * `mkDownSizer` unpacks wider M-bit streams into narrow N-bit streams.
+ */
 package Gearbox;
 
 import FIFOF::*;

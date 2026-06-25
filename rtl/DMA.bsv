@@ -1,3 +1,10 @@
+/*
+ * DMA.bsv
+ * 
+ * Core Direct Memory Access (DMA) engine. 
+ * Provides decoupled AXI Read, Write, and Response channels using FIFOs
+ * to support highly pipelined burst transfers and hide memory latency.
+ */
 package DMA;
 
 import FIFOF::*;
@@ -53,6 +60,8 @@ interface DMA_Ifc#(numeric type mem_width, numeric type stream_width);
    method ActionValue#(Bool) getWriteResp();
 endinterface
 
+// mkDMA
+// Instantiates the raw DMA engine with generic data widths.
 module mkDMA (DMA_Ifc#(data_width, data_width));
    
    FIFOF#(Tuple2#(Bit#(data_width), Bit#(TDiv#(data_width, 8)))) write_data_fifo <- mkSizedFIFOF(16);
