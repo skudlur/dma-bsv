@@ -35,6 +35,16 @@ void c_write(uint64_t addr, uint64_t x, uint64_t n_bytes) {
     memcpy(p, &x, n_bytes);
 }
 
+void c_write_strb(uint64_t addr, uint64_t x, uint8_t strb) {
+    uint8_t *p = (uint8_t *)addr;
+    uint8_t *d = (uint8_t *)&x;
+    for (int i = 0; i < 8; i++) {
+        if ((strb >> i) & 1) {
+            p[i] = d[i];
+        }
+    }
+}
+
 void c_get_console_command(uint64_t *cmd_vec) {
     for(int i=0; i<10; i++) cmd_vec[i] = 0;
 }

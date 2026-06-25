@@ -1,6 +1,5 @@
 # =============================================================================
 # Makefile for the Bluespec DMA Controller Project
-# Adapted from a reference project structure.
 # =============================================================================
 
 # --- Tools ---
@@ -10,60 +9,82 @@ RM = rm -rf
 # --- Project Structure ---
 RTL_DIR = rtl
 TESTBENCH_DIR = testbench
-UTILS_DIR = utils
 
-# Top-level module and file for simulation
+# Top-level module for simulation
 TOP_MODULE = mkTestDMA
-TOP_FILE = test_DMA.bsv
 
 # --- Build and Output Configuration ---
 BUILD_DIR = build
 C_FILES_DIR = $(BUILD_DIR)/C_FILES
-TEST_EXE = dma_test
-OUTPUT_FILE = dma_simulation_output.txt
 
 # --- Compiler Flags ---
 # The "-p" flag is crucial for telling BSC where to find source files.
 # It is a colon-separated list of search paths.
-BSC_PATH_FLAGS =
-BSC_SIM_FLAGS = -u -sim -g $(TOP_MODULE) $(BSC_PATH_FLAGS)
-BSC_LINK_FLAGS = -sim -e $(TOP_MODULE) -o $(TEST_EXE)
+BSC_PATH_FLAGS = -p +:%/Libraries:$(RTL_DIR):$(TESTBENCH_DIR):tests
 
 # =============================================================================
 # Main Targets
 # =============================================================================
 
-# Default target: build and run the test
 .PHONY: all
-all: test
+all: test_all
 
-# Build and run the simulation testbench
-.PHONY: test
-test: $(TEST_EXE)
-	@echo "--- Running DMA Simulation ---"
-	./$(TEST_EXE) | tee $(OUTPUT_FILE)
-	@echo "--- Simulation Finished ---"
-	@echo "Output saved to $(OUTPUT_FILE)"
+.PHONY: test_all
+test_all: test_throughput test_sge test_robustness test_aligner
+	@echo "========================================="
+	@echo "All tests passed!"
+	@echo "========================================="
+
+# =============================================================================
+# Individual Test Targets
+# =============================================================================
+
+.PHONY: setup
+setup:
+	@mkdir -p $(BUILD_DIR) $(C_FILES_DIR)
+
+# Compile and run Throughput test
+test_throughput: setup
+	@echo "========================================="
+	@echo "Running Throughput Test (Raw DMA)"
+	@echo "========================================="
+	$(MAKE) build_and_run TOP_FILE=tests/test_throughput.bsv MACROS="" TEST_EXE=dma_test_throughput
+
+# Compile and run Scatter/Gather test
+test_sge: setup
+	@echo "========================================="
+	@echo "Running Scatter/Gather Test"
+	@echo "========================================="
+	$(MAKE) build_and_run TOP_FILE=tests/test_sge.bsv MACROS="" TEST_EXE=dma_test_sge
+
+# Compile and run Robustness test (SGE with backpressure)
+test_robustness: setup
+	@echo "========================================="
+	@echo "Running Robustness Test (SGE + Heavy Backpressure)"
+	@echo "========================================="
+	$(MAKE) build_and_run TOP_FILE=tests/test_sge.bsv MACROS="-D BACKPRESSURE" TEST_EXE=dma_test_robustness
+
+# Compile and run Byte Aligner test (Unaligned memory access)
+test_aligner: setup
+	@echo "========================================="
+	@echo "Running Unaligned Byte Aligner Test"
+	@echo "========================================="
+	$(MAKE) build_and_run TOP_FILE=tests/test_aligner.bsv MACROS="" TEST_EXE=dma_test_aligner
 
 # =============================================================================
 # Build Rules
 # =============================================================================
 
-# Rule to build the final simulation executable
-# Corrected version with symbolic link workaround
-$(TEST_EXE): $(RTL_DIR)/DMA.bsv $(TESTBENCH_DIR)/$(TOP_FILE) | $(BUILD_DIR) $(C_FILES_DIR)
-	@echo "--- Creating symbolic link for compilation ---"
-	cd $(TESTBENCH_DIR) && ln -sf ../$(RTL_DIR)/DMA.bsv DMA.bsv
-	cd $(TESTBENCH_DIR) && cp -r ../$(UTILS_DIR)/* ./
-
+.PHONY: build_and_run
+build_and_run: | $(BUILD_DIR) $(C_FILES_DIR)
 	@echo "--- Compiling Bluespec Code ---"
-	cd $(TESTBENCH_DIR) && $(BSC) $(BSC_SIM_FLAGS) -bdir ../$(BUILD_DIR) -simdir ../$(C_FILES_DIR) $(TOP_FILE)
-
-	@echo "--- Removing symbolic link ---"
-	cd $(TESTBENCH_DIR) && rm -f DMA.bsv
+	$(BSC) -u -sim -g $(TOP_MODULE) $(MACROS) $(BSC_PATH_FLAGS) -bdir $(BUILD_DIR) -simdir $(C_FILES_DIR) $(TOP_FILE)
 
 	@echo "--- Linking Executable ---"
-	$(BSC) $(BSC_LINK_FLAGS) -bdir $(BUILD_DIR) -simdir $(C_FILES_DIR) $(TESTBENCH_DIR)/C_imports.c
+	$(BSC) -sim -e $(TOP_MODULE) -o $(TEST_EXE) -bdir $(BUILD_DIR) -simdir $(C_FILES_DIR) $(TESTBENCH_DIR)/C_imports.c
+	
+	@echo "--- Running Simulation ---"
+	./$(TEST_EXE) | tee $(TEST_EXE)_output.txt
 
 # =============================================================================
 # Directory Creation
@@ -83,9 +104,9 @@ $(C_FILES_DIR): | $(BUILD_DIR)
 clean:
 	@echo "--- Cleaning All Build Artifacts ---"
 	@$(RM) $(BUILD_DIR)
-	@$(RM) $(TEST_EXE)
-	@$(RM) $(OUTPUT_FILE)
+	@$(RM) dma_test*
 	@$(RM) *.bo *.ba *.so *.cxx *.h *.o
+	@$(RM) $(TESTBENCH_DIR)/*.o
 	@echo "Done."
 
 # =============================================================================
@@ -100,12 +121,14 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Main Targets:"
-	@echo "  all          - (Default) Build and run the simulation testbench."
-	@echo "  test         - Build and run the simulation testbench."
-	@echo "  $(TEST_EXE)  - Compile and link the executable without running it."
+	@echo "  all             - Build and run all tests."
+	@echo "  test_all        - Build and run all tests."
+	@echo "  test_throughput - Run baseline throughput test."
+	@echo "  test_sge        - Run scatter/gather engine test."
+	@echo "  test_robustness - Run scatter/gather engine test with heavy backpressure."
 	@echo ""
 	@echo "Cleaning:"
-	@echo "  clean        - Remove all generated files and build artifacts."
+	@echo "  clean           - Remove all generated files and build artifacts."
 	@echo ""
 	@echo "Other:"
-	@echo "  help         - Show this help message."
+	@echo "  help            - Show this help message."

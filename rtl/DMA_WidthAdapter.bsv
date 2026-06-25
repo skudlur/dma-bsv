@@ -8,11 +8,13 @@ module mkDMA_32_to_64 (DMA_Ifc#(64, 32));
    DMA_Ifc#(64, 64) core <- mkDMA();
    
    Gearbox#(32, 64) w_gb <- mkUpSizer();
+   Gearbox#(4, 8) strb_gb <- mkUpSizer();
    Gearbox#(64, 32) r_gb <- mkDownSizer();
    
    rule push_to_core_w;
       let d <- w_gb.deq();
-      core.putWriteData(d);
+      let s <- strb_gb.deq();
+      core.putWriteData(d, s);
    endrule
    
    rule pull_from_core_r;
@@ -31,8 +33,9 @@ module mkDMA_32_to_64 (DMA_Ifc#(64, 32));
       core.startWrite(addr, len >> 1);
    endmethod
    
-   method Action putWriteData(Bit#(32) data);
+   method Action putWriteData(Bit#(32) data, Bit#(4) strb);
       w_gb.enq(data);
+      strb_gb.enq(strb);
    endmethod
    
    method ActionValue#(Bit#(32)) getReadData();

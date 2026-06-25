@@ -34,6 +34,7 @@ interface DMAMemory_Master_Ifc#(numeric type data_width);
 
    // W
    method Bit#(data_width) w_data();
+   method Bit#(TDiv#(data_width, 8)) w_strb();
    method Bool              w_last();
    method Bool              w_valid();
    method Action            w_ready(Bool rdy);
@@ -47,88 +48,89 @@ interface DMA_Ifc#(numeric type mem_width, numeric type stream_width);
    interface DMAMemory_Master_Ifc#(mem_width) mem_ifc;
    method Action startRead(Bit#(`ADDR_WIDTH) addr, Bit#(8) len);
    method Action startWrite(Bit#(`ADDR_WIDTH) addr, Bit#(8) len);
-   method Action putWriteData(Bit#(stream_width) data);
+   method Action putWriteData(Bit#(stream_width) data, Bit#(TDiv#(stream_width, 8)) strb);
    method ActionValue#(Bit#(stream_width)) getReadData();
    method ActionValue#(Bool) getWriteResp();
 endinterface
 
 module mkDMA (DMA_Ifc#(data_width, data_width));
-   Reg#(Bit#(8))  rg_r_len  <- mkReg(0);
-   Reg#(Bit#(8))  rg_w_len  <- mkReg(0);
-   Reg#(Bit#(8))  rg_b_len  <- mkReg(0);
-
-   Reg#(Bool)     rg_ar_pending <- mkReg(False);
-   Reg#(Bool)     rg_aw_pending <- mkReg(False);
-
-   Reg#(Bit#(32)) rg_addr <- mkReg(0);
-   Reg#(Bit#(8))  rg_len  <- mkReg(0);
    
-   FIFOF#(Bit#(data_width))    data_fifo       <- mkFIFOF();
-   FIFOF#(Bit#(data_width))    write_data_fifo <- mkSizedFIFOF(16);
-   FIFOF#(DMA_Command) cmd_fifo        <- mkFIFOF();
-   FIFOF#(Bool)        b_resp_fifo     <- mkFIFOF();
-
-   Wire#(Bool)         wr_ar_ready <- mkDWire(False);
-   Wire#(Bit#(data_width))     wr_r_data   <- mkDWire(0);
-   Wire#(Bool)         wr_r_last   <- mkDWire(False);
-   Wire#(Bool)         wr_r_valid  <- mkDWire(False);
+   FIFOF#(Tuple2#(Bit#(data_width), Bit#(TDiv#(data_width, 8)))) write_data_fifo <- mkSizedFIFOF(16);
+   FIFOF#(Bit#(data_width)) data_fifo       <- mkSizedFIFOF(16);
    
-   Wire#(Bool)         wr_aw_ready <- mkDWire(False);
-   Wire#(Bool)         wr_w_ready  <- mkDWire(False);
-   Wire#(Bool)         wr_b_valid  <- mkDWire(False);
-   Wire#(Bit#(2))      wr_b_resp   <- mkDWire(0);
+   FIFOF#(DMA_Command) cmd_fifo <- mkSizedFIFOF(16);
 
-   rule rl_start_transfer (!rg_ar_pending && !rg_aw_pending && rg_r_len == 0 && rg_w_len == 0 && rg_b_len == 0 && cmd_fifo.notEmpty);
+   // Outstanding request tracking
+   FIFOF#(DMA_Command) ar_fifo <- mkSizedFIFOF(4);
+   FIFOF#(DMA_Command) aw_fifo <- mkSizedFIFOF(4);
+   
+   FIFOF#(Bit#(8)) w_len_fifo <- mkSizedFIFOF(4);
+   FIFOF#(Bool)    b_req_fifo <- mkSizedFIFOF(4);
+   FIFOF#(Bool)    b_resp_fifo <- mkSizedFIFOF(16);
+
+   Reg#(Bit#(8)) rg_active_w_len <- mkReg(0);
+
+   Wire#(Bool) wr_ar_ready <- mkDWire(False);
+   Wire#(Bit#(data_width)) wr_r_data <- mkDWire(0);
+   Wire#(Bool) wr_r_last   <- mkDWire(False);
+   Wire#(Bool) wr_r_valid  <- mkDWire(False);
+   
+   Wire#(Bool) wr_aw_ready <- mkDWire(False);
+   Wire#(Bool) wr_w_ready  <- mkDWire(False);
+   Wire#(Bool) wr_b_valid  <- mkDWire(False);
+   Wire#(Bit#(2)) wr_b_resp <- mkDWire(0);
+
+   // Dispatch commands to independent AXI channels
+   rule rl_dispatch_cmd;
       let cmd = cmd_fifo.first;
-      cmd_fifo.deq;
-      rg_addr <= cmd.addr;
-      rg_len  <= cmd.len;
       if (cmd.cmd == READ) begin
-         rg_ar_pending <= True;
-         rg_r_len      <= cmd.len;
+         if (ar_fifo.notFull) begin
+            cmd_fifo.deq;
+            ar_fifo.enq(cmd);
+         end
       end else begin
-         rg_aw_pending <= True;
-         rg_w_len      <= cmd.len;
-         rg_b_len      <= 1;
+         if (aw_fifo.notFull && w_len_fifo.notFull && b_req_fifo.notFull) begin
+            cmd_fifo.deq;
+            aw_fifo.enq(cmd);
+            w_len_fifo.enq(cmd.len);
+            b_req_fifo.enq(True);
+         end
       end
    endrule
 
    // ----- READ CHANNELS -----
-   rule rl_send_ar (rg_ar_pending);
+   rule rl_send_ar (ar_fifo.notEmpty);
       if (wr_ar_ready) begin
-         rg_ar_pending <= False;
+         ar_fifo.deq;
       end
    endrule
 
-   rule rl_read_data (rg_r_len > 0);
-      if (wr_r_valid && data_fifo.notFull) begin
-         data_fifo.enq(wr_r_data);
-         rg_r_len <= rg_r_len - 1;
-      end
+   rule rl_read_data (wr_r_valid && data_fifo.notFull);
+      data_fifo.enq(wr_r_data);
    endrule
-
-   // rl_dump_read_data removed, replaced by getReadData method
 
    // ----- WRITE CHANNELS -----
-   rule rl_send_aw (rg_aw_pending);
+   rule rl_send_aw (aw_fifo.notEmpty);
       if (wr_aw_ready) begin
-         rg_aw_pending <= False;
+         aw_fifo.deq;
       end
    endrule
 
-   rule rl_send_w (rg_w_len > 0);
+   rule rl_start_w_burst (rg_active_w_len == 0);
+      rg_active_w_len <= w_len_fifo.first;
+      w_len_fifo.deq;
+   endrule
+
+   rule rl_send_w_beat (rg_active_w_len > 0);
       if (wr_w_ready && write_data_fifo.notEmpty) begin
-         let w = write_data_fifo.first;
          write_data_fifo.deq;
-         rg_w_len <= rg_w_len - 1;
+         rg_active_w_len <= rg_active_w_len - 1;
       end
    endrule
 
-   rule rl_wait_b (rg_b_len > 0);
-      if (wr_b_valid) begin
-         b_resp_fifo.enq(True);
-         rg_b_len <= rg_b_len - 1;
-      end
+   rule rl_wait_b (b_req_fifo.notEmpty && wr_b_valid && b_resp_fifo.notFull);
+      b_req_fifo.deq;
+      b_resp_fifo.enq(True);
    endrule
 
    // ----- INTERFACE -----
@@ -140,8 +142,8 @@ module mkDMA (DMA_Ifc#(data_width, data_width));
       cmd_fifo.enq(DMA_Command {cmd: WRITE, addr: addr, len: len});
    endmethod
 
-   method Action putWriteData(Bit#(data_width) data);
-      write_data_fifo.enq(data);
+   method Action putWriteData(Bit#(data_width) data, Bit#(TDiv#(data_width, 8)) strb);
+      write_data_fifo.enq(tuple2(data, strb));
    endmethod
 
    method ActionValue#(Bit#(data_width)) getReadData();
@@ -158,9 +160,9 @@ module mkDMA (DMA_Ifc#(data_width, data_width));
 
    interface DMAMemory_Master_Ifc mem_ifc;
       // AR Channel
-      method Bit#(`ADDR_WIDTH) ar_addr(); return rg_addr; endmethod
-      method Bit#(8) ar_len(); return rg_len - 1; endmethod
-      method Bool ar_valid(); return rg_ar_pending; endmethod
+      method Bit#(`ADDR_WIDTH) ar_addr(); return ar_fifo.first.addr; endmethod
+      method Bit#(8) ar_len(); return ar_fifo.first.len - 1; endmethod
+      method Bool ar_valid(); return ar_fifo.notEmpty; endmethod
       method Action ar_ready(Bool rdy); wr_ar_ready <= rdy; endmethod
 
       // R Channel
@@ -169,18 +171,23 @@ module mkDMA (DMA_Ifc#(data_width, data_width));
          wr_r_last <= r_last;
          wr_r_valid <= r_valid;
       endmethod
-      method Bool r_ready(); return data_fifo.notFull && (rg_r_len > 0); endmethod
+      method Bool r_ready(); return data_fifo.notFull; endmethod
 
       // AW Channel
-      method Bit#(`ADDR_WIDTH) aw_addr(); return rg_addr; endmethod
-      method Bit#(8) aw_len(); return rg_len - 1; endmethod
-      method Bool aw_valid(); return rg_aw_pending; endmethod
+      method Bit#(`ADDR_WIDTH) aw_addr(); return aw_fifo.first.addr; endmethod
+      method Bit#(8) aw_len(); return aw_fifo.first.len - 1; endmethod
+      method Bool aw_valid(); return aw_fifo.notEmpty; endmethod
       method Action aw_ready(Bool rdy); wr_aw_ready <= rdy; endmethod
 
       // W Channel
-      method Bit#(data_width) w_data(); return write_data_fifo.first; endmethod
-      method Bool w_last(); return rg_w_len == 1; endmethod
-      method Bool w_valid(); return (rg_w_len > 0) && write_data_fifo.notEmpty; endmethod
+      method Bit#(data_width) w_data(); return tpl_1(write_data_fifo.first); endmethod
+      method Bit#(TDiv#(data_width, 8)) w_strb(); return tpl_2(write_data_fifo.first); endmethod
+      method Bool w_last();
+         return rg_active_w_len == 1;
+      endmethod
+      method Bool w_valid();
+         return (rg_active_w_len > 0) && write_data_fifo.notEmpty;
+      endmethod
       method Action w_ready(Bool rdy); wr_w_ready <= rdy; endmethod
 
       // B Channel
@@ -188,7 +195,7 @@ module mkDMA (DMA_Ifc#(data_width, data_width));
          wr_b_resp <= b_resp;
          wr_b_valid <= b_valid;
       endmethod
-      method Bool b_ready(); return rg_b_len > 0; endmethod
+      method Bool b_ready(); return b_req_fifo.notEmpty && b_resp_fifo.notFull; endmethod
    endinterface
 
 endmodule

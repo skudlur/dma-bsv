@@ -20,6 +20,8 @@ import "BDPI" function ActionValue #(Bit #(64)) c_get_start_pc ();
 
 import "BDPI" function Action c_write (Bit #(64) addr, Bit #(64) x, Bit #(64) n_bytes);
 
+import "BDPI" function Action c_write_strb (Bit #(64) addr, Bit #(64) x, Bit #(8) strb);
+
 import "BDPI" function ActionValue #(Vector #(10, Bit #(64))) c_get_console_command ();
 
 // ================================================================

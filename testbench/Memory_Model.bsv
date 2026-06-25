@@ -112,7 +112,11 @@ module mkMemory_Model (Memory_IFC);
 	    rsp = Rsp {command:READ, data:x, status:OKAY, tid:req.tid};
 	 end
 	 else if (addr_ok && (req.command == WRITE)) begin
-	    c_write (p, extend (req.data), extend (reqSz_bytes (req.b_size)));
+	    if (req.wstrb != '1) begin
+	       c_write_strb(p, extend (req.data), extend (req.wstrb));
+	    end else begin
+	       c_write (p, extend (req.data), extend (reqSz_bytes (req.b_size)));
+	    end
 	    rsp = Rsp {command:WRITE, data:0, status:OKAY, tid:req.tid};
 	 end
 	 else

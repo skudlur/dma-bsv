@@ -10,3 +10,4 @@ dma_test
 testbench/DMA.bsv
 build/
 log/
+dma_test_*

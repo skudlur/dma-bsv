@@ -27,6 +27,7 @@ typedef struct {
    TLMCommand      command;
    Bit #(addr_sz)  addr;
    Bit #(data_sz)  data;    // Only for write requests
+   Bit #(TDiv#(data_sz, 8)) wstrb; // ADDED WSTRB
    TLMBSize        b_size;
    Bit #(tid_sz)   tid;
 } Req #(type tid_sz, type addr_sz, type data_sz)

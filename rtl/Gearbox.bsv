@@ -25,14 +25,20 @@ module mkDownSizer (Gearbox#(in_w, out_w))
    rule rl_unpack_first (rg_count == 0);
       Vector#(n, Bit#(out_w)) d = unpack(in_fifo.first);
       in_fifo.deq;
-      out_fifo.enq(d[fromInteger(valueOf(n)) - 1]);
+      out_fifo.enq(d[0]);
       rg_data <= d;
-      rg_count <= fromInteger(valueOf(n)) - 1;
+      if (fromInteger(valueOf(n)) > 1) begin
+         rg_count <= 1;
+      end
    endrule
 
    rule rl_unpack_rest (rg_count > 0);
-      out_fifo.enq(rg_data[rg_count - 1]);
-      rg_count <= rg_count - 1;
+      out_fifo.enq(rg_data[rg_count]);
+      if (rg_count == fromInteger(valueOf(n)) - 1) begin
+         rg_count <= 0;
+      end else begin
+         rg_count <= rg_count + 1;
+      end
    endrule
 
    method Action enq(Bit#(in_w) data);
